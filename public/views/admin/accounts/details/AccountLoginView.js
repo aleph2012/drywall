@@ -12,7 +12,7 @@ app.LoginView = Backbone.View.extend(
 {
   el: '#login',
 
-  template: _.template($('#tmpl-login').html()),
+  template: Handlebars.compile($('#tmpl-login').html()),
 
   events:
   {
@@ -33,12 +33,12 @@ app.LoginView = Backbone.View.extend(
 
   syncUp: function()
   {
-    this.model.set(
-    {
-      _id: app.mainView.model.id,
-      id: app.mainView.model.get('user').id,
-      name: app.mainView.model.get('user').name
-    });
+    // this.model.set(
+    // {
+    //   _id: app.mainView.model.id,
+    //   id: app.mainView.model.get('user').id,
+    //   name: app.mainView.model.get('user').name
+    // });
   },
 
   render: function()

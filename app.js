@@ -2,15 +2,16 @@
 var Config = require('app-server/config'),
     log = require('app-server/log-controller').LogController.initLoggers(Config.logLevel),
     express = require('express'),
-    mongoStore = require('connect-mongo')(express),
+    exphbs  = require('express3-handlebars'),
+    cons = require('consolidate'),
     http = require('http'),
     path = require('path'),
     redis = require("redis"),
     RedisStore = require("connect-redis")(express),
     passport = require('passport'),
-    mongoose = require('mongoose'),
-    dba = require('app-server/db-accessors'),
-    cors = require('app-server/cors');
+    crypto = require('crypto'),
+    cors = require('app-server/cors'),
+    RiakDBAccessor = require('lib/app-server/db/RiakDBAccessor');
 
 //  When there's no NODE_ENV environment variable, default to development
 if (!process.env.NODE_ENV)
@@ -41,16 +42,41 @@ process.on('uncaughtException', function(err)
 
   log.error(text);
   log.error('Killing process with pid =' + process.pid + ' due to uncaught exception');
-/*
-  setTimeout(function() {
-    process.exit(1);
-  },100);
-*/
 });
 
 var App = module.exports;
 var app = express();
 App.app = app;
+app.db = RiakDBAccessor;
+
+require('app-server/MigrateScript').initMigrate(function(error, response)
+{
+  console.log(error);
+  console.log(response);
+});
+
+app.encryptPassword = function(password)
+{
+  return crypto.createHmac('sha512', app.get('crypto-key')).update(password).digest('hex');
+};
+
+app.canPlayRoleOf = function(user, role)
+{
+  return !!user.accounts[role];
+};
+
+app.defaultReturnUrl = function(user)
+{
+  var returnUrl = '/account/';
+
+  // if (this.canPlayRoleOf(user, 'media_curation'))
+  //   returnUrl = '/account/';
+
+  if (this.canPlayRoleOf(user, 'admin'))
+    returnUrl = '/admin/';
+
+  return returnUrl;
+};
 
 function initialize()
 {
@@ -58,8 +84,34 @@ function initialize()
   app.configure(configureApp);
 
   // Config dev
-  app.configure('development', function(){
+  app.configure('development', function()
+  {
     app.use(express.errorHandler());
+
+    require('lib/app-server/db/RiakDBAccessor').findOne('users', { username: 'root' }, function(error, user)
+    {
+      if (error || !user)
+      {
+        require('lib/app-server/db/RiakDBAccessor').insertRootUser(function(error, user)
+        {
+          user.password = app.encryptPassword('evriONE88');
+
+          require('lib/app-server/db/RiakDBAccessor').update('users', user._id, user, function(error, user)
+          {
+            if (error)
+              console.log('error updating root user');
+
+            require('lib/app-server/db/RiakDBAccessor').insertRootAdmin(user, function(error, admin)
+            {
+              require('lib/app-server/db/RiakDBAccessor').insertRootGroup(function(error, group)
+              {
+                console.log('done');
+              });
+            });
+          });
+        });
+      }
+    });
   });
 
   //config passport
@@ -70,29 +122,14 @@ function initialize()
 
   log.info("app.get('env') = " + app.get('env'));
 
-  dba.getDBAccessors().init(Config.mongoDBConnectURL, function(error, db)
+  // Listen up
+  http.createServer(app).listen(Config.port, function()
   {
-    app.db = db;
-
-    // Config data models.
-    require('app-server/models')(app, db);
-
-    // Listen up
-    http.createServer(app).listen(Config.port, function()
-    {
-      log.info('listening on port ' + Config.port);
-    } );
-  } );
+    log.info('listening on port ' + Config.port);
+  });
 }
 
 initialize();
-
-/*
-setTimeout(function()
-{
-  initialize();
-}, 15000 );
-*/
 
 function configureApp()
 {
@@ -105,19 +142,35 @@ function configureApp()
   app.disable('x-powered-by');
   app.set('port', process.env.PORT || 3000);
   app.set('views', __dirname + '/views');
-  app.set('view engine', 'jade');
   app.set('strict routing', true);
   app.set('project-name', 'SportStream Account System');
   app.set('company-name', 'SportStream');
   app.set('admin-email', 'xxx@gmail.com');
   app.set('crypto-key', 'k3yb0ardc4t');
+  app.set('JWT_TOKEN_SECRET', 'Sup3rS3cr3tK3y_for_token_auth');
+
+  app.engine('jade', cons.jade);
+  app.engine('handlebars', exphbs({defaultLayout: 'default', extname: '.handlebars', layoutsDir: 'layouts'}));
+  app.set('view engine', 'jade');
+
+  app.set('APP_WHITELIST', [
+    'keyword_insights',
+    'media_curation',
+    'admin_portal'
+  ]);
+
+  app.set('APP_BUCKETS', {
+    keyword_insights: 'keyword_insights_accounts',
+    media_curation: 'media_curation_accounts',
+    admin_portal: 'admin_portal_accounts'
+  });
 
   //email (smtp) settings
   app.set('email-from-name', app.get('project-name')+ ' Website');
-  app.set('email-from-address', 'xxx@gmail.com');
+  app.set('email-from-address', 'kapil.goenka@gmail.com');
   app.set('email-credentials', {
-    user: 'xxx@gmail.com',
-    password: '',
+    user: 'kapil.goenka@gmail.com',
+    password: 'georgia$008',
     host: 'smtp.gmail.com',
     ssl: true
   });
@@ -146,70 +199,40 @@ function configureApp()
 
   // Middleware
   app.use(express.favicon(__dirname + '/public/favicon.ico'));
+  app.use(express.errorHandler({ dumpExceptions: true }));
+  app.use(express.static(path.join(__dirname, 'public')));
+
+  app.use(function(req, res, next)
+  {
+    if (req.method === 'OPTIONS')
+      res.send(200);
+    else
+      next();
+  });
 
   app.use(express.logger('dev'));
-
-  app.use(express.logger({
-    format: ':date :response-time :method :url (:status)'
-  }));
-
-  app.use(express.errorHandler({
-    dumpExceptions: true
-  }));
-
-  app.use(express.static(path.join(__dirname, 'public')));
   app.use(express.bodyParser());
   app.use(express.methodOverride());
 
-  var foo =
+  app.use(function(req, res, next)
   {
-    "_id": "XY70N7IzqzSQhtukiqNzjfJG",
-    "session": "{\"cookie\":{\"originalMaxAge\":null,\"expires\":null,\"httpOnly\":true,\"path\":\"/\"},\"passport\":{\"user\":\"51af74beae2f9af312000005\"}}"
-  };
+    req.isAjaxRequest = req.headers['cookie'] === undefined;
+    next();
+  });
 
-  var session =
-  {
-    cookie:
-    {
-      originalMaxAge: null,
-      expires: null,
-      httpOnly: true,
-      path: "/"
-    },
-
-    passport:
-    {
-      user: "51af74beae2f9af312000005"
-    }
-  }
-
-// Setup session store.
+  // Setup session store
   app.use(express.cookieParser());
-/*
-  app.use(express.session({
-    secret: "Sup3rS3cr3tK3y",
-    store: new mongoStore({ url: app.get('mongodb-uri') }),
-    expires: new Date(Date.now() + (30 * 86400 * 1000))
-  }));
-*/
-  app.use(express.session({
+
+  app.use(express.session(
+  {
     secret: "Sup3rS3cr3tK3y",
     store: new RedisStore({ client: redisClient/*, ttl: 60*/ }),
-//    store: new mongoStore({ url: app.get('mongodb-uri') }),
-///*
     cookie:
     {
-      maxAge: 30 * 60 * 1000//30 * 60 * 1000
-//      expires: new Date(Date.now() + (30 * 86400 * 1000))
+      maxAge: 30 * 60 * 1000
     }
-//*/
   }));
-/*
-  app.use(express.session({
-    secret: 'Sup3rS3cr3tK3y',
-    store: new mongoStore({ url: app.get('mongodb-uri') })
-  }));
-*/
+
   app.use(passport.initialize());
   app.use(passport.session());
   app.use(app.router);

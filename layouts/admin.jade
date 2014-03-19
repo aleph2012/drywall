@@ -52,9 +52,6 @@ html
             li: a(href='/logout/') Logout
           div.clearfix
 
-    div.ajax-spinner
-      img(src='/media/ajax-pulse.gif')
-
     script(src='/vendor/jquery/jquery-1.9.1.min.js')
     script(src='/vendor/underscore/underscore-min.js')
     script(src='/vendor/backbone/backbone-min.js')
@@ -71,12 +68,14 @@ html
         li.dropdown.open
           input.search-query(name='_search', type='text', placeholder='search', tab-index='1')
           ul#_search-results-rows.dropdown-menu
+
     script(type='text/template', id='tmpl-_search-results-row')
       |<% if (type && type == 'header') { %>
       |<%= name %>
       |<% } else { %>
       a(href!='<%= url %>') <%= name %>
       |<% } %>
+
     script(type='text/template', id='tmpl-_search-results-empty-row')
       li.nav-header no documents matched
     script(src='/layouts/admin/search.js')

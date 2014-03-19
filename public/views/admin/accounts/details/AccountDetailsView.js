@@ -12,7 +12,7 @@ app.DetailsView = Backbone.View.extend(
 {
   el: '#details',
 
-  template: _.template($('#tmpl-details').html()),
+  template: Handlebars.compile($('#tmpl-details').html()),
 
   events:
   {
@@ -31,16 +31,7 @@ app.DetailsView = Backbone.View.extend(
 
   syncUp: function()
   {
-    this.model.set(
-    {
-      _id: app.mainView.model.id,
-      first: app.mainView.model.get('name').first,
-      middle: app.mainView.model.get('name').middle,
-      last: app.mainView.model.get('name').last,
-      company: app.mainView.model.get('company'),
-      phone: app.mainView.model.get('phone'),
-      zip: app.mainView.model.get('zip')
-    });
+    this.model.set(app.mainView.model.toJSON());
   },
 
   render: function()
@@ -49,8 +40,9 @@ app.DetailsView = Backbone.View.extend(
     this.$el.html(this.template(this.model.attributes));
 
     //set input values
-    for (var key in this.model.attributes)
-      this.$el.find('[name="' + key + '"]').val(this.model.attributes[key]);
+    for (var key in this.model.attributes.events)
+      this.$el.find('[name="' + key + '"]').html(JSON.stringify(this.model.attributes.events[key], null, 4));
+      // this.$el.find('[name="' + key + '"]').val(JSON.stringify(this.model.attributes.events[key]));
   },
 
   update: function()

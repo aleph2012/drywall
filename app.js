@@ -193,16 +193,9 @@ function configureApp()
       next();
   });
 
-  app.use(express.logger('dev'));
+  app.use(express.logger());
   app.use(express.bodyParser());
   app.use(express.methodOverride());
-
-  app.use(function(req, res, next)
-  {
-    req.isAjaxRequest = req.headers.cookie === undefined;
-
-    next();
-  });
 
   // Setup session store
   app.use(express.cookieParser());
